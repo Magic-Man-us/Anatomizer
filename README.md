@@ -2,7 +2,7 @@
 
 Static analysis engine that takes source code and produces detailed execution, cost, memory, concurrency, assembly, debugger, and comparison analyses. Results are served via a JSON API and rendered in an interactive browser-based visualization layer.
 
-This is a personal project I had to  help me learn Rust, some compiler internals, and static analysis techniques with . The code is open source under a dual MIT/GPL-3.0 license. Contributions and feedback are welcome!
+This is a personal project I had to  help me learn Rust, some compiler internals, and static analysis techniques with tree sitters. The code is open source under a dual MIT/GPL-3.0 license. Contributions and feedback are welcome!
 
 ![Rust](https://img.shields.io/badge/Rust-2021-orange)
 ![React](https://img.shields.io/badge/React-19-blue)
