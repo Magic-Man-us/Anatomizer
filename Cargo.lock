@@ -15,9 +15,11 @@ dependencies = [
 name = "anatomizer-analyzer"
 version = "0.1.0"
 dependencies = [
+ "anatomizer-assembler",
  "anatomizer-core",
  "anatomizer-parser",
  "petgraph",
+ "regex",
 ]
 
 [[package]]
@@ -29,8 +31,11 @@ dependencies = [
  "anatomizer-core",
  "anatomizer-parser",
  "axum",
+ "http-body-util",
+ "serde",
  "serde_json",
  "tokio",
+ "tower",
  "tower-http",
 ]
 
@@ -62,6 +67,7 @@ dependencies = [
  "tree-sitter-javascript",
  "tree-sitter-python",
  "tree-sitter-rust",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -792,6 +798,8 @@ dependencies = [
  "bitflags",
  "bytes",
  "http",
+ "http-body",
+ "http-body-util",
  "pin-project-lite",
  "tower-layer",
  "tower-service",
@@ -893,6 +901,16 @@ name = "tree-sitter-rust"
 version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca8ccb3e3a3495c8a943f6c3fd24c3804c471fd7f4f16087623c7fa4c0068e8a"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
 dependencies = [
  "cc",
  "tree-sitter-language",

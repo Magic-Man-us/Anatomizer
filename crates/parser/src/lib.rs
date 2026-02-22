@@ -3,6 +3,7 @@ pub mod go_lang;
 pub mod python;
 pub mod rust_lang;
 pub mod typescript;
+pub mod util;
 
 use tree_sitter::Tree;
 

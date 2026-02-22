@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 anatomizer-core = { path = "../core" }
 anatomizer-parser = { path = "../parser" }
+anatomizer-assembler = { path = "../assembler" }
 petgraph = "0.6"
+regex = "1"

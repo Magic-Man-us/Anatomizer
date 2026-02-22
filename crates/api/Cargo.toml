@@ -10,5 +10,10 @@ anatomizer-analyzer = { path = "../analyzer" }
 anatomizer-assembler = { path = "../assembler" }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors", "limit"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

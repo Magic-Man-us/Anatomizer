@@ -3,6 +3,8 @@ pub mod cycles;
 pub mod go_asm;
 pub mod python_dis;
 pub mod rust_asm;
+pub mod sandbox;
+pub mod x86_parse;
 
 use anatomizer_core::AssemblyAnalysis;
 

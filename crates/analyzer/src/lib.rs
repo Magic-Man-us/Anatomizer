@@ -11,13 +11,19 @@ pub fn analyze(code: &str, language: &str) -> AnalysisResponse {
     let parsed = anatomizer_parser::parse(code, language);
 
     match parsed {
-        Ok(_parsed_code) => {
-            let execution = cost::execution_analysis(code, language);
-            let cost = cost::cost_analysis(code, language);
-            let mem = memory::memory_analysis(code, language);
-            let conc = concurrency::concurrency_analysis(code, language);
-            let dbg = debugger::debugger_analysis(code, language);
-            let cmp = compare::compare_analysis(code, language);
+        Ok(parsed_code) => {
+            let execution = cost::execution_analysis(&parsed_code, code, language);
+            let cost = cost::cost_analysis(&parsed_code, code, language);
+            let mem = memory::memory_analysis(&parsed_code, code, language);
+            let conc = concurrency::concurrency_analysis(&parsed_code, code, language);
+            let dbg = debugger::debugger_analysis(&parsed_code, code, language);
+            let cmp = compare::compare_analysis(&parsed_code, code, language);
+            let asm = anatomizer_assembler::disassemble(code, language)
+                .unwrap_or_else(|e| anatomizer_core::AssemblyAnalysis {
+                    arch: "unknown".into(),
+                    blocks: vec![],
+                    notes: format!("Disassembly failed: {}", e),
+                });
 
             AnalysisResponse {
                 language: language.to_string(),
@@ -25,11 +31,7 @@ pub fn analyze(code: &str, language: &str) -> AnalysisResponse {
                 cost,
                 memory: mem,
                 concurrency: conc,
-                assembly: anatomizer_core::AssemblyAnalysis {
-                    arch: "unknown".into(),
-                    blocks: vec![],
-                    notes: "Assembly analysis not yet implemented.".into(),
-                },
+                assembly: asm,
                 debugger: dbg,
                 compare: cmp,
             }
