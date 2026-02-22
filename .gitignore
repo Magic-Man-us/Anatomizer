@@ -1,4 +1,7 @@
 /target
+frontend/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
 .env
 *.swp
 *.swo
@@ -8,3 +11,6 @@
 *.iml
 .DS_Store
 Thumbs.db
+.serena
+.claude
+CLAUDE.md

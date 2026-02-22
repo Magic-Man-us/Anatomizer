@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anatomizer — Code Execution Visualizer</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: var(--color-bg, #0a0e17); overflow: hidden; }
+    </style>
+    <!-- Prevent flash: apply saved theme before React hydrates -->
+    <script>
+      (function() {
+        var DARK_BG = "#0a0e17";
+        var LIGHT_BG = "#f8fafc";
+        var theme = "dark";
+        try { theme = localStorage.getItem("anatomizer-theme") || "dark"; } catch(e) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", theme);
+        document.documentElement.style.setProperty("--color-bg", theme === "light" ? LIGHT_BG : DARK_BG);
+        document.body && (document.body.style.background = theme === "light" ? LIGHT_BG : DARK_BG);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
