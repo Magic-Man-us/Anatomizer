@@ -1,0 +1,9 @@
+[package]
+name = "anatomizer-analyzer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anatomizer-core = { path = "../core" }
+anatomizer-parser = { path = "../parser" }
+petgraph = "0.6"

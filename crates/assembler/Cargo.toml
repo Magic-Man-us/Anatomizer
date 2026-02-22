@@ -1,0 +1,9 @@
+[package]
+name = "anatomizer-assembler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anatomizer-core = { path = "../core" }
+tempfile = "3"
+regex = "1"
