@@ -1,43 +1,41 @@
 use crate::sandbox;
 use anatomizer_core::{AsmBlock, AsmInstruction, AssemblyAnalysis};
 use regex::Regex;
-use std::io::Write;
-use std::process::Command;
 use std::sync::LazyLock;
-use tempfile::NamedTempFile;
 
 static DIS_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*(\d+)?\s+(\d+)\s+(\w+)\s*(.*)$").expect("dis regex")
 });
 
+/// Python dis script fed via stdin.
+///
+/// Reads code from stdin, compiles it, and disassembles the bytecode.
+/// This avoids creating temp files on disk.
+const PYTHON_DIS_SCRIPT: &str =
+    "import dis,sys; dis.dis(compile(sys.stdin.read(),'<input>','exec'))";
+
 /// Disassemble Python code using the `dis` module.
 ///
-/// Runs: python3 -c "import dis; exec(open('temp.py').read()); ..."
+/// Feeds code via stdin to avoid temp files entirely:
+///   python3 -c "import dis,sys; dis.dis(compile(sys.stdin.read(),'<input>','exec'))"
+///
 /// Parses output lines like:
 ///   2           0 LOAD_CONST               0 (0)
 ///               2 STORE_NAME               0 (counter)
 pub fn disassemble_python(code: &str) -> Result<AssemblyAnalysis, String> {
     sandbox::validate_source(code)?;
 
-    let mut temp = NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {}", e))?;
-    temp.write_all(code.as_bytes())
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    let output = sandbox::run_command(
+        "python3",
+        &["-c", PYTHON_DIS_SCRIPT],
+        Some(code.as_bytes()),
+    )?;
 
-    let temp_path = temp.path().to_string_lossy().to_string();
-
-    let mut cmd = Command::new("python3");
-    cmd.arg("-c")
-        .arg("import dis,sys; code=open(sys.argv[1]).read(); dis.dis(compile(code,'<input>','exec'))")
-        .arg(&temp_path);
-    let output = sandbox::run_with_timeout(cmd)?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Python dis failed: {}", stderr));
+    if !output.success {
+        return Err("Python disassembly failed".into());
     }
 
-    let raw = String::from_utf8_lossy(&output.stdout).to_string();
-    let blocks = parse_dis_output(&raw);
+    let blocks = parse_dis_output(&output.stdout);
 
     Ok(AssemblyAnalysis {
         arch: "cpython-bytecode".into(),

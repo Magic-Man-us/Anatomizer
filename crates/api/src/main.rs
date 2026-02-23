@@ -1,57 +1,206 @@
 mod routes;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 use axum::{
-    http::Method,
+    extract::{Request, State},
+    http::{header, HeaderValue, Method, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
 
-use anatomizer_core::{AnalysisRequest, AnalysisResponse};
+use anatomizer_core::{
+    validate_code, validated_language, AnalysisRequest, AnalysisResponse,
+};
+
+use routes::ApiError;
+
+// ── Constants ─────────────────────────────────────────────────────────────
 
 /// Maximum request body size: 256 KiB.
-/// The assembler validates at 64 KiB, but deserialization happens first.
-/// 256 KiB is generous enough to cover all valid use cases while preventing
-/// memory exhaustion from oversized payloads.
+/// The core validates at 64 KiB, but deserialization happens first.
 const MAX_REQUEST_BODY_BYTES: usize = 256 * 1024;
+
+/// Maximum requests per minute (global).
+const RATE_LIMIT_PER_MINUTE: u64 = 30;
+
+/// Hard timeout per request.
+const REQUEST_TIMEOUT_SECS: u64 = 45;
+
+/// Default allowed origin for debug builds.
+const DEFAULT_DEV_ORIGIN: &str = "http://localhost:5173";
+
+/// Default allowed origin for release builds.
+const DEFAULT_PROD_ORIGIN: &str = "https://anatomizer.mimsec.com";
+
+// ── Rate limiter state ────────────────────────────────────────────────────
+
+/// Simple token-bucket rate limiter.
+///
+/// Tracks remaining tokens and refills once per minute.
+/// Good enough for a demo site; no per-IP tracking needed.
+#[derive(Clone)]
+struct RateLimiter {
+    remaining: Arc<AtomicU64>,
+}
+
+impl RateLimiter {
+    fn new(capacity: u64) -> Self {
+        let limiter = Self {
+            remaining: Arc::new(AtomicU64::new(capacity)),
+        };
+
+        // Spawn a background task to refill tokens every minute
+        let remaining = limiter.remaining.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                remaining.store(capacity, Ordering::Relaxed);
+            }
+        });
+
+        limiter
+    }
+
+    fn try_acquire(&self) -> bool {
+        // Atomically decrement if > 0
+        loop {
+            let current = self.remaining.load(Ordering::Relaxed);
+            if current == 0 {
+                return false;
+            }
+            if self
+                .remaining
+                .compare_exchange_weak(current, current - 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return true;
+            }
+        }
+    }
+}
+
+// ── Security headers middleware ───────────────────────────────────────────
+
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+
+    headers.insert(
+        header::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+
+    response
+}
+
+// ── Rate limiting middleware ──────────────────────────────────────────────
+
+async fn rate_limit(
+    State(limiter): State<RateLimiter>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if !limiter.try_acquire() {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "error": "Rate limit exceeded. Try again later." })),
+        )
+            .into_response();
+    }
+    next.run(request).await
+}
+
+// ── CORS configuration ───────────────────────────────────────────────────
+
+fn build_cors_layer() -> CorsLayer {
+    let origin = std::env::var("ALLOWED_ORIGIN").unwrap_or_else(|_| {
+        if cfg!(debug_assertions) {
+            DEFAULT_DEV_ORIGIN.to_string()
+        } else {
+            DEFAULT_PROD_ORIGIN.to_string()
+        }
+    });
+
+    let origin_header = HeaderValue::from_str(&origin)
+        .expect("ALLOWED_ORIGIN must be a valid header value");
+
+    CorsLayer::new()
+        .allow_origin(origin_header)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
+}
+
+// ── App setup ─────────────────────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() {
-    // CORS: Allow all origins for local development.
-    // For production deployments, restrict to the frontend origin via ALLOWED_ORIGIN env var.
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any);
+    let cors = build_cors_layer();
+    let limiter = RateLimiter::new(RATE_LIMIT_PER_MINUTE);
 
     let app = Router::new()
         .route("/analyze", post(analyze))
         .route("/disassemble", post(routes::disassemble))
         .route("/health", get(routes::health))
         .route("/languages", get(routes::languages))
+        .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn_with_state(limiter.clone(), rate_limit))
         .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(REQUEST_TIMEOUT_SECS),
+        ))
         .layer(cors);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".to_string());
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .expect(&format!(
-            "Failed to bind to {} — is the port already in use?",
-            addr
-        ));
-    println!("Anatomizer API running on http://localhost:{}", port);
+        .unwrap_or_else(|_| panic!("Failed to bind to {addr} — is the port already in use?"));
+    println!("Anatomizer API running on http://localhost:{port}");
     axum::serve(listener, app).await.expect("Server error");
 }
 
-async fn analyze(Json(req): Json<AnalysisRequest>) -> Json<AnalysisResponse> {
-    let lang = req
-        .language
+async fn analyze(
+    Json(req): Json<AnalysisRequest>,
+) -> Result<Json<AnalysisResponse>, ApiError> {
+    // Validate code
+    validate_code(&req.code).map_err(|e| ApiError::bad_request(e.message))?;
+
+    // Validate and resolve language
+    let language = validated_language(&req.language)
+        .map_err(|e| ApiError::bad_request(e.message))?;
+
+    let lang_str = language
+        .map(|l| l.as_str().to_string())
         .unwrap_or_else(|| detect_language(&req.code));
 
-    let response = anatomizer_analyzer::analyze(&req.code, &lang);
-    Json(response)
+    let response = anatomizer_analyzer::analyze(&req.code, &lang_str);
+    Ok(Json(response))
 }
 
 pub(crate) fn detect_language(code: &str) -> String {
@@ -182,8 +331,8 @@ mod tests {
         Router::new().route("/analyze", post(analyze))
     }
 
-    /// Helper: send an AnalysisRequest to POST /analyze and return (status, deserialized response).
-    async fn post_analyze(req: &AnalysisRequest) -> (StatusCode, AnalysisResponse) {
+    /// Helper: send an AnalysisRequest to POST /analyze.
+    async fn post_analyze(req: &AnalysisRequest) -> (StatusCode, Vec<u8>) {
         let app = app();
         let http_req = Request::builder()
             .method("POST")
@@ -194,10 +343,8 @@ mod tests {
 
         let response = app.oneshot(http_req).await.unwrap();
         let status = response.status();
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let resp: AnalysisResponse = serde_json::from_slice(&body)
-            .expect("response body should deserialize into AnalysisResponse");
-        (status, resp)
+        let body = response.into_body().collect().await.unwrap().to_bytes().to_vec();
+        (status, body)
     }
 
     #[tokio::test]
@@ -207,8 +354,10 @@ mod tests {
             language: None,
         };
 
-        let (status, resp) = post_analyze(&req).await;
+        let (status, body) = post_analyze(&req).await;
         assert_eq!(status, StatusCode::OK);
+        let resp: AnalysisResponse = serde_json::from_slice(&body)
+            .expect("response body should deserialize into AnalysisResponse");
         assert_eq!(resp.language, "python");
         assert!(!resp.execution.summary.is_empty(), "execution summary should not be empty");
     }
@@ -220,8 +369,10 @@ mod tests {
             language: None,
         };
 
-        let (status, resp) = post_analyze(&req).await;
+        let (status, body) = post_analyze(&req).await;
         assert_eq!(status, StatusCode::OK);
+        let resp: AnalysisResponse = serde_json::from_slice(&body)
+            .expect("response body should deserialize into AnalysisResponse");
         assert_eq!(resp.language, "rust");
     }
 
@@ -232,8 +383,10 @@ mod tests {
             language: None,
         };
 
-        let (status, resp) = post_analyze(&req).await;
+        let (status, body) = post_analyze(&req).await;
         assert_eq!(status, StatusCode::OK);
+        let resp: AnalysisResponse = serde_json::from_slice(&body)
+            .expect("response body should deserialize into AnalysisResponse");
         // Empty code defaults to python via the fallback in detect_language.
         assert!(!resp.language.is_empty(), "language field should not be empty");
     }
@@ -245,8 +398,60 @@ mod tests {
             language: Some("go".into()),
         };
 
-        let (status, resp) = post_analyze(&req).await;
+        let (status, body) = post_analyze(&req).await;
         assert_eq!(status, StatusCode::OK);
+        let resp: AnalysisResponse = serde_json::from_slice(&body)
+            .expect("response body should deserialize into AnalysisResponse");
         assert_eq!(resp.language, "go", "should use the explicitly specified language");
+    }
+
+    #[tokio::test]
+    async fn analyze_invalid_language_returns_400() {
+        let req = AnalysisRequest {
+            code: "print('hi')".into(),
+            language: Some("../../etc/passwd".into()),
+        };
+
+        let (status, body) = post_analyze(&req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let err: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(err["error"].as_str().unwrap().contains("Unsupported language"));
+    }
+
+    #[tokio::test]
+    async fn analyze_null_bytes_returns_400() {
+        let req = AnalysisRequest {
+            code: "print('hi')\0rm -rf /".into(),
+            language: None,
+        };
+
+        let (status, body) = post_analyze(&req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let err: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(err["error"].as_str().unwrap().contains("null bytes"));
+    }
+
+    #[tokio::test]
+    async fn analyze_oversized_code_returns_400() {
+        let req = AnalysisRequest {
+            code: "x".repeat(anatomizer_core::MAX_CODE_BYTES + 1),
+            language: Some("python".into()),
+        };
+
+        let (status, body) = post_analyze(&req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let err: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(err["error"].as_str().unwrap().contains("too large"));
+    }
+
+    #[tokio::test]
+    async fn analyze_null_language_auto_detects() {
+        let req = AnalysisRequest {
+            code: "print('hi')".into(),
+            language: None,
+        };
+
+        let (status, _) = post_analyze(&req).await;
+        assert_eq!(status, StatusCode::OK);
     }
 }

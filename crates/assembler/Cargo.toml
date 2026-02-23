@@ -7,3 +7,7 @@ edition = "2021"
 anatomizer-core = { path = "../core" }
 tempfile = "3"
 regex = "1"
+tokio = { version = "1", features = ["sync"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+sandbox-rt = { path = "../sandbox" }

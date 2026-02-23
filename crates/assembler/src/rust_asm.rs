@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 /// Disassemble Rust code using `rustc --emit asm`.
 ///
-/// Validates source size and enforces a timeout on the rustc subprocess.
+/// Validates source size and runs the compiler through the sandbox.
 ///
 /// Writes source to a temp file, compiles with:
 ///   rustc --emit asm -C opt-level=2 -o temp.s temp.rs
@@ -14,7 +14,7 @@ use tempfile::TempDir;
 pub fn disassemble_rust(code: &str) -> Result<AssemblyAnalysis, String> {
     sandbox::validate_source(code)?;
 
-    let dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
     let src_path = dir.path().join("input.rs");
     let asm_path = dir.path().join("output.s");
 
@@ -27,21 +27,20 @@ pub fn disassemble_rust(code: &str) -> Result<AssemblyAnalysis, String> {
     };
 
     std::fs::write(&src_path, &full_code)
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     let mut cmd = Command::new("rustc");
     cmd.args(["--emit", "asm", "-C", "opt-level=2", "-o"])
         .arg(&asm_path)
         .arg(&src_path);
-    let output = sandbox::run_with_timeout(cmd)?;
+    let output = sandbox::run_with_timeout_cmd(cmd)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("rustc failed: {}", stderr));
+        return Err("Rust compilation failed".into());
     }
 
     let raw = std::fs::read_to_string(&asm_path)
-        .map_err(|e| format!("Failed to read assembly: {}", e))?;
+        .map_err(|e| format!("Failed to read assembly: {e}"))?;
 
     let blocks = parse_x86_asm(&raw);
 

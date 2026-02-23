@@ -17,7 +17,7 @@ static SIMPLE_INSTR_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Disassemble Go code using `go tool compile -S`.
 ///
-/// Validates source size and enforces a timeout on the go subprocess.
+/// Validates source size and runs the compiler through the sandbox.
 ///
 /// Writes source to a temp file, compiles with:
 ///   go tool compile -S temp.go
@@ -28,7 +28,7 @@ static SIMPLE_INSTR_RE: LazyLock<Regex> = LazyLock::new(|| {
 pub fn disassemble_go(code: &str) -> Result<AssemblyAnalysis, String> {
     sandbox::validate_source(code)?;
 
-    let dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
     let src_path = dir.path().join("input.go");
 
     // Ensure a package declaration exists so `go tool compile` accepts it.
@@ -39,15 +39,14 @@ pub fn disassemble_go(code: &str) -> Result<AssemblyAnalysis, String> {
     };
 
     std::fs::write(&src_path, &full_code)
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     let mut cmd = Command::new("go");
     cmd.args(["tool", "compile", "-S"]).arg(&src_path);
-    let output = sandbox::run_with_timeout(cmd)?;
+    let output = sandbox::run_with_timeout_cmd(cmd)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("go tool compile failed: {}", stderr));
+        return Err("Go compilation failed".into());
     }
 
     // `go tool compile -S` writes assembly to stderr (not stdout).
@@ -66,13 +65,6 @@ pub fn disassemble_go(code: &str) -> Result<AssemblyAnalysis, String> {
 }
 
 /// Parse Go compiler `-S` output into labeled blocks.
-///
-/// Go asm output has two common formats:
-/// 1. Function headers: `"".funcname STEXT ...` or `command-line-arguments.funcname STEXT ...`
-/// 2. Instructions with hex offsets: `  0x0000 00000 (input.go:4)  MOVQ  AX, BX`
-/// 3. Simple indented instructions: `  FUNCDATA  $0, ...`
-///
-/// We group instructions under their parent function header as blocks.
 fn parse_go_asm(raw: &str) -> Vec<AsmBlock> {
     let mut blocks: Vec<AsmBlock> = Vec::new();
     let mut current_label = String::new();
@@ -100,7 +92,6 @@ fn parse_go_asm(raw: &str) -> Vec<AsmBlock> {
                 comment: String::new(),
             });
         } else if let Some(caps) = SIMPLE_INSTR_RE.captures(line) {
-            // The regex `[A-Z]\w*` already guarantees uppercase-first.
             current_instructions.push(AsmInstruction {
                 addr: String::new(),
                 op: caps[1].to_string(),

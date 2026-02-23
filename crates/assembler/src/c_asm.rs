@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 /// Disassemble C/C++ code using `gcc -S` or `g++ -S`.
 ///
-/// Validates source size and enforces a timeout on the compiler subprocess.
+/// Validates source size and runs the compiler through the sandbox.
 ///
 /// Writes source to a temp file, compiles with:
 ///   gcc -S -O2 -fverbose-asm -o temp.s temp.c
@@ -17,12 +17,12 @@ use tempfile::TempDir;
 pub fn disassemble_c(code: &str) -> Result<AssemblyAnalysis, String> {
     sandbox::validate_source(code)?;
 
-    let dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
 
     let is_cpp = detect_cpp(code);
     let ext = if is_cpp { "cpp" } else { "c" };
     let compiler = if is_cpp { "g++" } else { "gcc" };
-    let src_path = dir.path().join(format!("input.{}", ext));
+    let src_path = dir.path().join(format!("input.{ext}"));
     let asm_path = dir.path().join("output.s");
 
     // Wrap in a main function if one is not present, so the compiler
@@ -34,21 +34,20 @@ pub fn disassemble_c(code: &str) -> Result<AssemblyAnalysis, String> {
     };
 
     std::fs::write(&src_path, &full_code)
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     let mut cmd = Command::new(compiler);
     cmd.args(["-S", "-O2", "-fverbose-asm", "-o"])
         .arg(&asm_path)
         .arg(&src_path);
-    let output = sandbox::run_with_timeout(cmd)?;
+    let output = sandbox::run_with_timeout_cmd(cmd)?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("{} failed: {}", compiler, stderr));
+        return Err(format!("{compiler} compilation failed"));
     }
 
     let raw = std::fs::read_to_string(&asm_path)
-        .map_err(|e| format!("Failed to read assembly: {}", e))?;
+        .map_err(|e| format!("Failed to read assembly: {e}"))?;
 
     let blocks = parse_x86_asm(&raw);
     let lang_label = if is_cpp { "C++" } else { "C" };
@@ -57,8 +56,7 @@ pub fn disassemble_c(code: &str) -> Result<AssemblyAnalysis, String> {
         arch: "x86-64".into(),
         blocks,
         notes: format!(
-            "{} assembly via {} -S -O2 -fverbose-asm",
-            lang_label, compiler
+            "{lang_label} assembly via {compiler} -S -O2 -fverbose-asm"
         ),
     })
 }
