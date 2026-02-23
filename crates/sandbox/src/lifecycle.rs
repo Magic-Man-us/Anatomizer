@@ -209,3 +209,97 @@ impl Drop for Sandbox {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_display() {
+        assert_eq!(format!("{}", State::Created), "created");
+        assert_eq!(format!("{}", State::Ready), "ready");
+        assert_eq!(format!("{}", State::Running), "running");
+        assert_eq!(format!("{}", State::Completed), "completed");
+        assert_eq!(format!("{}", State::Destroyed), "destroyed");
+    }
+
+    #[test]
+    fn state_serialization_roundtrip() {
+        let state = State::Ready;
+        let json = serde_json::to_string(&state).unwrap();
+        let deserialized: State = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, State::Ready);
+    }
+
+    #[test]
+    fn sandbox_new_starts_in_created_state() {
+        let sb = Sandbox::new(SandboxConfig::default());
+        assert_eq!(sb.state(), State::Created);
+        assert!(sb.history().is_empty());
+        assert!(sb.last_result().is_none());
+        assert!(!sb.id.is_empty(), "should have a UUID");
+    }
+
+    #[test]
+    fn sandbox_new_generates_unique_ids() {
+        let sb1 = Sandbox::new(SandboxConfig::default());
+        let sb2 = Sandbox::new(SandboxConfig::default());
+        assert_ne!(sb1.id, sb2.id);
+    }
+
+    #[test]
+    fn sandbox_config_accessor() {
+        let cfg = SandboxConfig::default().memory(64).cpu(10);
+        let sb = Sandbox::new(cfg);
+        assert_eq!(sb.config().max_memory_mb, 64);
+        assert_eq!(sb.config().max_cpu_secs, 10);
+    }
+
+    #[test]
+    fn sandbox_exec_requires_ready_state() {
+        let mut sb = Sandbox::new(SandboxConfig::default());
+        // In Created state, exec should fail
+        let result = sb.exec("echo", &["hi"], None);
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("expected `ready`"));
+        assert!(err.contains("created"));
+    }
+
+    #[test]
+    fn sandbox_reset_requires_completed_state() {
+        let mut sb = Sandbox::new(SandboxConfig::default());
+        // In Created state, reset should fail
+        let result = sb.reset();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn sandbox_destroy_is_idempotent() {
+        let mut sb = Sandbox::new(SandboxConfig::default());
+        // Destroying from Created state should work
+        assert!(sb.destroy().is_ok());
+        assert_eq!(sb.state(), State::Destroyed);
+        // Destroying again should be a no-op
+        assert!(sb.destroy().is_ok());
+        assert_eq!(sb.state(), State::Destroyed);
+    }
+
+    #[test]
+    fn exec_result_serialization() {
+        let result = ExecResult {
+            exit_code: 0,
+            stdout: "hello\n".into(),
+            stderr: String::new(),
+            wall_time: Duration::from_millis(42),
+            timed_out: false,
+            oom_killed: false,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let deserialized: ExecResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.exit_code, 0);
+        assert_eq!(deserialized.stdout, "hello\n");
+        assert!(!deserialized.timed_out);
+        assert!(!deserialized.oom_killed);
+    }
+}

@@ -454,4 +454,171 @@ mod tests {
         let (status, _) = post_analyze(&req).await;
         assert_eq!(status, StatusCode::OK);
     }
+
+    // --- Security headers tests ---
+
+    /// Build an app with the security headers middleware applied.
+    fn app_with_security_headers() -> Router {
+        Router::new()
+            .route("/analyze", post(analyze))
+            .route("/health", get(routes::health))
+            .layer(middleware::from_fn(security_headers))
+    }
+
+    #[tokio::test]
+    async fn security_headers_present_on_success_response() {
+        let app = app_with_security_headers();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let headers = response.headers();
+        assert_eq!(
+            headers.get("x-content-type-options").unwrap(),
+            "nosniff",
+        );
+        assert_eq!(
+            headers.get("x-frame-options").unwrap(),
+            "DENY",
+        );
+        assert_eq!(
+            headers.get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin",
+        );
+        assert_eq!(
+            headers.get("content-security-policy").unwrap(),
+            "default-src 'none'; frame-ancestors 'none'",
+        );
+        assert_eq!(
+            headers.get("permissions-policy").unwrap(),
+            "camera=(), microphone=(), geolocation=()",
+        );
+    }
+
+    #[tokio::test]
+    async fn security_headers_present_on_error_response() {
+        let app = app_with_security_headers();
+        let req = AnalysisRequest {
+            code: "print('hi')".into(),
+            language: Some("../../etc/passwd".into()),
+        };
+        let http_req = Request::builder()
+            .method("POST")
+            .uri("/analyze")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&req).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(http_req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        // Security headers must be present even on error responses
+        assert!(response.headers().get("x-content-type-options").is_some());
+        assert!(response.headers().get("x-frame-options").is_some());
+        assert!(response.headers().get("content-security-policy").is_some());
+    }
+
+    // --- Rate limiter tests ---
+
+    #[tokio::test]
+    async fn rate_limiter_allows_requests_within_limit() {
+        let limiter = RateLimiter {
+            remaining: Arc::new(AtomicU64::new(5)),
+        };
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_rejects_when_exhausted() {
+        let limiter = RateLimiter {
+            remaining: Arc::new(AtomicU64::new(1)),
+        };
+        assert!(limiter.try_acquire()); // last token
+        assert!(!limiter.try_acquire()); // exhausted
+        assert!(!limiter.try_acquire()); // still exhausted
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_returns_zero_on_empty() {
+        let limiter = RateLimiter {
+            remaining: Arc::new(AtomicU64::new(0)),
+        };
+        assert!(!limiter.try_acquire());
+    }
+
+    #[tokio::test]
+    async fn rate_limit_middleware_returns_429_when_exhausted() {
+        let limiter = RateLimiter {
+            remaining: Arc::new(AtomicU64::new(0)),
+        };
+
+        let app = Router::new()
+            .route("/health", get(routes::health))
+            .layer(middleware::from_fn_with_state(limiter, rate_limit));
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let err: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(err["error"].as_str().unwrap().contains("Rate limit"));
+    }
+
+    #[tokio::test]
+    async fn rate_limit_middleware_allows_when_tokens_available() {
+        let limiter = RateLimiter {
+            remaining: Arc::new(AtomicU64::new(10)),
+        };
+
+        let app = Router::new()
+            .route("/health", get(routes::health))
+            .layer(middleware::from_fn_with_state(limiter, rate_limit));
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // --- Detect language edge cases ---
+
+    #[test]
+    fn test_detect_language_empty_code_defaults_to_python() {
+        assert_eq!(detect_language(""), "python");
+    }
+
+    #[test]
+    fn test_detect_language_no_indicators_defaults_to_python() {
+        assert_eq!(detect_language("hello world"), "python");
+    }
+
+    #[test]
+    fn test_detect_language_javascript_vs_typescript() {
+        // "function " is a TypeScript indicator (weak)
+        // "console." is a TypeScript indicator (weak)
+        // This is intentional: JS and TS share syntax, we lean TypeScript
+        assert_eq!(
+            detect_language("function greet() { console.log('hi'); }"),
+            "typescript"
+        );
+    }
 }

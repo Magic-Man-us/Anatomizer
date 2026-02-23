@@ -84,3 +84,93 @@ fn parse_dis_output(raw: &str) -> Vec<AsmBlock> {
 
     blocks
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Sample Python 3.12+ dis output for `x = 1 + 2`.
+    const SAMPLE_DIS_SIMPLE: &str = "\
+  1           0 LOAD_CONST               0 (1)
+              2 LOAD_CONST               1 (2)
+              4 BINARY_ADD
+              6 STORE_NAME               0 (x)
+              8 LOAD_CONST               2 (None)
+             10 RETURN_VALUE
+";
+
+    /// Sample dis output with function disassembly block headers.
+    const SAMPLE_DIS_WITH_FUNCTION: &str = "\
+  1           0 LOAD_CONST               0 (<code object greet>)
+              2 MAKE_FUNCTION            0
+              4 STORE_NAME               0 (greet)
+              6 LOAD_CONST               1 (None)
+              8 RETURN_VALUE
+
+Disassembly of <code object greet at 0x7f>:
+  2           0 LOAD_CONST               1 ('hello')
+              2 RETURN_VALUE
+";
+
+    #[test]
+    fn parse_dis_output_simple_module() {
+        let blocks = parse_dis_output(SAMPLE_DIS_SIMPLE);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].label, "module");
+        assert!(!blocks[0].instructions.is_empty());
+    }
+
+    #[test]
+    fn parse_dis_output_extracts_opcodes() {
+        let blocks = parse_dis_output(SAMPLE_DIS_SIMPLE);
+        let ops: Vec<&str> = blocks[0].instructions.iter().map(|i| i.op.as_str()).collect();
+        assert!(ops.contains(&"LOAD_CONST"));
+        assert!(ops.contains(&"BINARY_ADD"));
+        assert!(ops.contains(&"STORE_NAME"));
+        assert!(ops.contains(&"RETURN_VALUE"));
+    }
+
+    #[test]
+    fn parse_dis_output_extracts_operands() {
+        let blocks = parse_dis_output(SAMPLE_DIS_SIMPLE);
+        let first = &blocks[0].instructions[0];
+        assert_eq!(first.op, "LOAD_CONST");
+        assert!(first.operands.contains("(1)"));
+    }
+
+    #[test]
+    fn parse_dis_output_extracts_addresses() {
+        let blocks = parse_dis_output(SAMPLE_DIS_SIMPLE);
+        let addrs: Vec<&str> = blocks[0].instructions.iter().map(|i| i.addr.as_str()).collect();
+        assert_eq!(addrs[0], "0");
+        assert_eq!(addrs[1], "2");
+        assert_eq!(addrs[2], "4");
+    }
+
+    #[test]
+    fn parse_dis_output_with_function_creates_two_blocks() {
+        let blocks = parse_dis_output(SAMPLE_DIS_WITH_FUNCTION);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].label, "module");
+        assert!(blocks[1].label.contains("greet"));
+    }
+
+    #[test]
+    fn parse_dis_output_empty_input() {
+        let blocks = parse_dis_output("");
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn parse_dis_output_only_header_no_instructions() {
+        let blocks = parse_dis_output("Disassembly of <code object foo>:\n");
+        assert!(blocks.is_empty(), "no instructions means no blocks");
+    }
+
+    #[test]
+    fn parse_dis_output_non_matching_lines_ignored() {
+        let input = "some random text\nanother line\n";
+        let blocks = parse_dis_output(input);
+        assert!(blocks.is_empty());
+    }
+}

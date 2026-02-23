@@ -211,6 +211,14 @@ pub fn run_with_timeout_cmd(mut cmd: Command) -> Result<std::process::Output, St
         .try_acquire()
         .map_err(|_| "Too many concurrent compilation requests".to_string())?;
 
+    run_with_timeout_cmd_inner(&mut cmd)
+}
+
+/// Inner implementation of [`run_with_timeout_cmd`] without semaphore acquisition.
+///
+/// Separated so tests can exercise the timeout/kill logic without contending
+/// for the global concurrency semaphore.
+fn run_with_timeout_cmd_inner(cmd: &mut Command) -> Result<std::process::Output, String> {
     let child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -274,9 +282,13 @@ mod tests {
         assert!(result.unwrap_err().contains("null bytes"));
     }
 
+    // --- run_command_inner tests ---
+    // These test the inner function directly to avoid semaphore contention
+    // when tests run in parallel.
+
     #[test]
     fn test_run_command_echo() {
-        let output = run_command("echo", &["hello"], None)
+        let output = run_command_inner("echo", &["hello"], None)
             .expect("echo should succeed");
         assert!(output.success);
         assert!(output.stdout.contains("hello"));
@@ -284,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_run_command_with_stdin() {
-        let output = run_command("cat", &[], Some(b"stdin data"))
+        let output = run_command_inner("cat", &[], Some(b"stdin data"))
             .expect("cat with stdin should succeed");
         assert!(output.success);
         assert!(output.stdout.contains("stdin data"));
@@ -292,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_run_command_captures_stderr() {
-        let output = run_command("sh", &["-c", "echo error_msg >&2; exit 1"], None)
+        let output = run_command_inner("sh", &["-c", "echo error_msg >&2; exit 1"], None)
             .expect("should capture output even on non-zero exit");
         assert!(!output.success);
         assert!(output.stderr.contains("error_msg"));
@@ -300,7 +312,55 @@ mod tests {
 
     #[test]
     fn test_run_command_spawn_failure() {
-        let result = run_command("/nonexistent/binary", &[], None);
+        let result = run_command_inner("/nonexistent/binary", &[], None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_command_empty_stdin() {
+        let output = run_command_inner("cat", &[], Some(b""))
+            .expect("cat with empty stdin should succeed");
+        assert!(output.success);
+        assert!(output.stdout.is_empty());
+    }
+
+    // --- run_with_timeout_cmd_inner tests ---
+    // These test the inner function directly to avoid semaphore contention
+    // when tests run in parallel.
+
+    #[test]
+    fn test_run_with_timeout_cmd_success() {
+        let mut cmd = std::process::Command::new("echo");
+        cmd.arg("hello");
+        let output = run_with_timeout_cmd_inner(&mut cmd).expect("echo should succeed");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("hello"));
+    }
+
+    #[test]
+    fn test_run_with_timeout_cmd_captures_stderr() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "echo error_msg >&2; exit 1"]);
+        let output = run_with_timeout_cmd_inner(&mut cmd).expect("should capture output even on non-zero exit");
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("error_msg"));
+    }
+
+    #[test]
+    fn test_run_with_timeout_cmd_spawn_failure() {
+        let mut cmd = std::process::Command::new("/nonexistent/binary/that/does/not/exist");
+        let result = run_with_timeout_cmd_inner(&mut cmd);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to spawn"));
+    }
+
+    #[test]
+    fn test_run_with_timeout_cmd_handles_large_output() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "dd if=/dev/zero bs=1024 count=128 2>/dev/null | od"]);
+        let result = run_with_timeout_cmd_inner(&mut cmd);
+        assert!(result.is_ok(), "should handle large output without deadlock");
     }
 }

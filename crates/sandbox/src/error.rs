@@ -31,3 +31,47 @@ pub enum SandboxError {
     #[error("nix: {0}")]
     Nix(#[from] nix::errno::Errno),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bad_state_display() {
+        let err = SandboxError::BadState("expected `ready`, got `created`".into());
+        let msg = format!("{err}");
+        assert!(msg.contains("expected `ready`"));
+        assert!(msg.contains("created"));
+    }
+
+    #[test]
+    fn timeout_display() {
+        let err = SandboxError::Timeout(10);
+        assert!(format!("{err}").contains("10"));
+    }
+
+    #[test]
+    fn output_overflow_display() {
+        let err = SandboxError::OutputOverflow(1048576);
+        assert!(format!("{err}").contains("1048576"));
+    }
+
+    #[test]
+    fn signal_display() {
+        let err = SandboxError::Signal(9);
+        assert!(format!("{err}").contains("9"));
+    }
+
+    #[test]
+    fn spawn_display() {
+        let err = SandboxError::Spawn("clone: EPERM".into());
+        assert!(format!("{err}").contains("clone: EPERM"));
+    }
+
+    #[test]
+    fn io_error_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err: SandboxError = io_err.into();
+        assert!(format!("{err}").contains("file not found"));
+    }
+}
