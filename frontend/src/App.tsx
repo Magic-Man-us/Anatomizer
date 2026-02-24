@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
 import type { AnalysisResponse } from "./types";
+import type { CodeExample } from "./examples";
+import { EXAMPLES, DEFAULT_EXAMPLE_ID } from "./examples";
 import type { ViewIndex } from "./theme";
 import { COLORS, toggleTheme, getTheme } from "./theme";
 import { detectLanguage } from "./highlight";
@@ -16,44 +18,22 @@ import { AsmView } from "./components/AsmView";
 import { DebugView } from "./components/DebugView";
 import { CompareView } from "./components/CompareView";
 import { AIChatPanel } from "./components/AIChatPanel";
+import { ExampleToggle, ExampleSidebar } from "./components/ExamplePicker";
 
-const SAMPLE_CODE = `import threading
-import time
+/** Width of the examples sidebar when open (px). */
+const SIDEBAR_WIDTH = 240;
 
-counter = 0
-lock = threading.Lock()
-
-def increment(n):
-    global counter
-    for i in range(n):
-        lock.acquire()
-        temp = counter
-        time.sleep(0.001)
-        counter = temp + 1
-        lock.release()
-
-def fast_sum(data):
-    result_comp = sum([x * 2 for x in data])
-    result_loop = 0
-    for x in data:
-        result_loop += x * 2
-    return result_comp, result_loop
-
-t1 = threading.Thread(target=increment, args=(100,))
-t2 = threading.Thread(target=increment, args=(100,))
-t1.start()
-t2.start()
-t1.join()
-t2.join()
-print(f"Counter: {counter}")`;
+const DEFAULT_EXAMPLE = EXAMPLES.find((e) => e.id === DEFAULT_EXAMPLE_ID)!;
 
 export default function App() {
-  const [code, setCode] = useState(SAMPLE_CODE);
+  const [code, setCode] = useState(DEFAULT_EXAMPLE.code);
   const [activeView, setActiveView] = useState<ViewIndex>(0);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
+  const [activeExampleId, setActiveExampleId] = useState<string | null>(DEFAULT_EXAMPLE_ID);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [isDark, setIsDark] = useState(() => getTheme() === "dark");
   const lang = detectLanguage(code);
@@ -61,6 +41,14 @@ export default function App() {
   const handleToggleTheme = useCallback(() => {
     const next = toggleTheme();
     setIsDark(next === "dark");
+  }, []);
+
+  const handleSelectExample = useCallback((example: CodeExample) => {
+    setCode(example.code);
+    setActiveExampleId(example.id);
+    setAnalysis(null);
+    setError(null);
+    setDemoMode(false);
   }, []);
 
   const handleAnalyze = async () => {
@@ -103,6 +91,10 @@ export default function App() {
     }
   };
 
+  const gridCols = sidebarOpen
+    ? `${SIDEBAR_WIDTH}px 1fr 1fr 300px`
+    : "1fr 1fr 300px";
+
   return (
     <div
       style={{
@@ -110,14 +102,15 @@ export default function App() {
         height: "100vh",
         background: COLORS.bg,
         display: "grid",
-        gridTemplateColumns: "1fr 1fr 300px",
+        gridTemplateColumns: gridCols,
         gridTemplateRows: demoMode ? "48px auto 1fr" : "48px 1fr",
         fontFamily: "'Inter',system-ui,sans-serif",
         color: COLORS.text,
         overflow: "hidden",
+        transition: "grid-template-columns 0.2s ease",
       }}
     >
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────────────── */}
       <div
         style={{
           gridColumn: "1/-1",
@@ -154,26 +147,10 @@ export default function App() {
               <IconWarning size={10} /> {error}
             </span>
           )}
-          <button
-            onClick={handleAnalyze}
-            disabled={busy}
-            style={{
-              background: busy
-                ? COLORS.btnDisabled
-                : `linear-gradient(135deg,${COLORS.accent},${COLORS.purple})`,
-              border: "none",
-              borderRadius: 6,
-              padding: "7px 18px",
-              color: "#fff",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: busy ? "not-allowed" : "pointer",
-              boxShadow: busy ? "none" : `0 0 16px ${COLORS.accentAlpha40}`,
-              transition: "all 0.2s",
-            }}
-          >
-            {busy ? <><IconHourglass size={12} /> Analyzing...</> : <><IconZap size={12} /> Analyze</>}
-          </button>
+          <ExampleToggle
+            open={sidebarOpen}
+            onToggle={() => setSidebarOpen((p) => !p)}
+          />
           <button
             onClick={handleToggleTheme}
             aria-label="Toggle theme"
@@ -204,7 +181,7 @@ export default function App() {
               color: COLORS.textDim,
               padding: 6,
               borderRadius: 6,
-              border: `1px solid transparent`,
+              border: "1px solid transparent",
               transition: "all 0.2s",
             }}
           >
@@ -213,7 +190,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Demo mode banner */}
+      {/* ── Demo mode banner ────────────────────────────────────── */}
       {demoMode && (
         <div
           style={{
@@ -230,7 +207,7 @@ export default function App() {
           }}
         >
           <span>
-            <IconClipboard size={12} /> Demo mode — showing pre-generated analysis for the sample code.
+            <IconClipboard size={12} /> Demo mode — showing pre-generated analysis.
             Start the backend with{" "}
             <code
               style={{
@@ -242,7 +219,7 @@ export default function App() {
             >
               cargo run -p anatomizer-api
             </code>{" "}
-            for live analysis.
+            for live analysis of any code.
           </span>
           <button
             onClick={handleRetryLive}
@@ -262,12 +239,87 @@ export default function App() {
         </div>
       )}
 
-      {/* Editor */}
-      <div style={{ borderRight: `1px solid ${COLORS.border}`, overflow: "hidden" }}>
-        <CodeEditor code={code} setCode={setCode} lang={lang} />
+      {/* ── Examples sidebar (conditional) ──────────────────────── */}
+      {sidebarOpen && (
+        <div style={{ overflow: "hidden" }}>
+          <ExampleSidebar
+            activeExampleId={activeExampleId}
+            onSelect={handleSelectExample}
+          />
+        </div>
+      )}
+
+      {/* ── Editor + Analyze bar ────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          borderRight: `1px solid ${COLORS.border}`,
+          overflow: "hidden",
+        }}
+      >
+        {/* Code editor */}
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <CodeEditor
+            code={code}
+            setCode={(newCode: string) => {
+              setCode(newCode);
+              if (activeExampleId) setActiveExampleId(null);
+            }}
+            lang={lang}
+          />
+        </div>
+
+        {/* Analyze action bar — at the bottom, right where the user is looking */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 12px",
+            borderTop: `1px solid ${COLORS.border}`,
+            background: COLORS.panel,
+          }}
+        >
+          <button
+            onClick={handleAnalyze}
+            disabled={busy}
+            style={{
+              background: busy
+                ? COLORS.btnDisabled
+                : `linear-gradient(135deg,${COLORS.accent},${COLORS.purple})`,
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 22px",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: busy ? "not-allowed" : "pointer",
+              boxShadow: busy ? "none" : `0 0 16px ${COLORS.accentAlpha40}`,
+              transition: "all 0.2s",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {busy ? (
+              <><IconHourglass size={12} /> Analyzing...</>
+            ) : (
+              <><IconZap size={12} /> Analyze</>
+            )}
+          </button>
+          <span
+            style={{
+              fontSize: 10,
+              color: COLORS.textMuted,
+            }}
+          >
+            {lang}
+          </span>
+        </div>
       </div>
 
-      {/* Visualization */}
+      {/* ── Visualization ───────────────────────────────────────── */}
       <div
         style={{
           display: "flex",
@@ -284,7 +336,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden" }}>{renderActiveView()}</div>
       </div>
 
-      {/* AI Chat */}
+      {/* ── AI Chat ─────────────────────────────────────────────── */}
       <div style={{ background: COLORS.panel, overflow: "hidden" }}>
         <AIChatPanel />
       </div>
