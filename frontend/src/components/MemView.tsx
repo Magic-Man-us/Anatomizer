@@ -5,9 +5,10 @@ import { IconZap } from "./Icons";
 
 interface MemViewProps {
   data: MemoryAnalysis | null;
+  isMobile?: boolean;
 }
 
-export function MemView({ data }: MemViewProps) {
+export function MemView({ data, isMobile = false }: MemViewProps) {
   if (!data?.allocations?.length)
     return <Empty icon={<IconZap size={13} />} label="Analyze to see memory model" />;
 
@@ -26,7 +27,7 @@ export function MemView({ data }: MemViewProps) {
             key={i}
             style={{
               display: "grid",
-              gridTemplateColumns: "64px 120px 1fr 60px",
+              gridTemplateColumns: isMobile ? "1fr 60px" : "64px 120px 1fr 60px",
               padding: "6px 10px",
               background: isHeap ? `${COLORS.orange}08` : `${COLORS.green}08`,
               border: `1px solid ${color}15`,
@@ -36,20 +37,30 @@ export function MemView({ data }: MemViewProps) {
               marginBottom: 3,
             }}
           >
-            <span
-              style={{
-                color,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                fontSize: 9,
-              }}
-            >
-              {a.type}
-            </span>
-            <span style={{ color: COLORS.cyan, fontFamily: "monospace" }}>
-              {a.name}
-            </span>
-            <span style={{ color: COLORS.textDim }}>{a.detail}</span>
+            {isMobile ? (
+              <span style={{ color: COLORS.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ color, fontWeight: 700, textTransform: "uppercase", fontSize: 9 }}>{a.type}</span>{" "}
+                <span style={{ color: COLORS.cyan, fontFamily: "monospace" }}>{a.name}</span>{" "}
+                {a.detail}
+              </span>
+            ) : (
+              <>
+                <span
+                  style={{
+                    color,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    fontSize: 9,
+                  }}
+                >
+                  {a.type}
+                </span>
+                <span style={{ color: COLORS.cyan, fontFamily: "monospace" }}>
+                  {a.name}
+                </span>
+                <span style={{ color: COLORS.textDim }}>{a.detail}</span>
+              </>
+            )}
             <span
               style={{
                 color: COLORS.textMuted,

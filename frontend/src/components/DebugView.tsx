@@ -14,12 +14,16 @@ const BTN_STYLE: React.CSSProperties = {
   cursor: "pointer",
 };
 
+/** Minimum touch target size for mobile accessibility (px). */
+const MOBILE_TOUCH_TARGET = 44;
+
 interface DebugViewProps {
   data: DebuggerAnalysis | null;
   code: string;
+  isMobile?: boolean;
 }
 
-export function DebugView({ data, code }: DebugViewProps) {
+export function DebugView({ data, code, isMobile = false }: DebugViewProps) {
   const [step, setStep] = useState(0);
 
   // Reset step when data changes
@@ -55,14 +59,14 @@ export function DebugView({ data, code }: DebugViewProps) {
         <button
           onClick={() => setStep(0)}
           disabled={step === 0}
-          style={BTN_STYLE}
+          style={{ ...BTN_STYLE, ...(isMobile && { minWidth: MOBILE_TOUCH_TARGET, minHeight: MOBILE_TOUCH_TARGET, display: "flex", alignItems: "center", justifyContent: "center" }) }}
         >
           <IconSkipBack size={12} />
         </button>
         <button
           onClick={() => setStep(Math.max(0, step - 1))}
           disabled={step === 0}
-          style={BTN_STYLE}
+          style={{ ...BTN_STYLE, ...(isMobile && { minWidth: MOBILE_TOUCH_TARGET, minHeight: MOBILE_TOUCH_TARGET, display: "flex", alignItems: "center", justifyContent: "center" }) }}
         >
           <IconChevronLeft size={12} />
         </button>
@@ -79,14 +83,14 @@ export function DebugView({ data, code }: DebugViewProps) {
         <button
           onClick={() => setStep(Math.min(totalSteps - 1, step + 1))}
           disabled={step >= totalSteps - 1}
-          style={BTN_STYLE}
+          style={{ ...BTN_STYLE, ...(isMobile && { minWidth: MOBILE_TOUCH_TARGET, minHeight: MOBILE_TOUCH_TARGET, display: "flex", alignItems: "center", justifyContent: "center" }) }}
         >
           <IconChevronRight size={12} />
         </button>
         <button
           onClick={() => setStep(totalSteps - 1)}
           disabled={step >= totalSteps - 1}
-          style={BTN_STYLE}
+          style={{ ...BTN_STYLE, ...(isMobile && { minWidth: MOBILE_TOUCH_TARGET, minHeight: MOBILE_TOUCH_TARGET, display: "flex", alignItems: "center", justifyContent: "center" }) }}
         >
           <IconSkipForward size={12} />
         </button>
@@ -148,7 +152,7 @@ export function DebugView({ data, code }: DebugViewProps) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
           gap: 10,
           flexShrink: 0,
         }}

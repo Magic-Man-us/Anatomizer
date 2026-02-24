@@ -139,4 +139,5 @@ export const HIGHLIGHT_CSS = `.hl-kw{color:var(--color-hl-keyword);font-weight:6
 .ed-ln{position:absolute;top:0;left:0;width:44px;height:100%;overflow:hidden;text-align:right;padding:14px 8px 14px 0;color:var(--color-line-num);font-size:11px;line-height:1.65;user-select:none;background:var(--color-gutter-bg);border-right:1px solid var(--color-border);z-index:2}
 .ed-hl{position:absolute;top:0;left:44px;right:0;padding:14px;white-space:pre;pointer-events:none;color:var(--color-text);overflow:hidden}
 .ed-ta{position:absolute;top:0;left:44px;right:0;bottom:0;padding:14px;background:transparent;color:transparent;caret-color:var(--color-text);border:none;outline:none;resize:none;white-space:pre;font:inherit;line-height:inherit;overflow:auto;z-index:1}
-.ed-ta::selection{background:var(--color-accent-a40)}`;
+.ed-ta::selection{background:var(--color-accent-a40)}
+@media(max-width:767px){.ed-wrap{font-size:12px}.ed-ln{width:36px}.ed-hl,.ed-ta{left:36px;padding:10px}}`;

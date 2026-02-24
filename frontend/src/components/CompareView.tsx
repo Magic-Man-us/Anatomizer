@@ -5,9 +5,10 @@ import { IconZap, IconCheck } from "./Icons";
 
 interface CompareViewProps {
   data: CompareAnalysis | null;
+  isMobile?: boolean;
 }
 
-export function CompareView({ data }: CompareViewProps) {
+export function CompareView({ data, isMobile = false }: CompareViewProps) {
   if (!data?.comparisons?.length)
     return <Empty icon={<IconZap size={13} />} label="Analyze to see pattern comparisons" />;
 
@@ -41,7 +42,7 @@ export function CompareView({ data }: CompareViewProps) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
               borderBottom: `1px solid ${COLORS.border}`,
             }}
           >
@@ -51,7 +52,9 @@ export function CompareView({ data }: CompareViewProps) {
                 style={{
                   padding: 10,
                   borderRight:
-                    pi === 0 ? `1px solid ${COLORS.border}` : "none",
+                    !isMobile && pi === 0 ? `1px solid ${COLORS.border}` : "none",
+                  borderBottom:
+                    isMobile && pi === 0 ? `1px solid ${COLORS.border}` : "none",
                 }}
               >
                 <div
@@ -81,14 +84,16 @@ export function CompareView({ data }: CompareViewProps) {
           </div>
 
           {/* Stats comparison */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
             {comp.patterns.map((p, pi) => (
               <div
                 key={pi}
                 style={{
                   padding: 10,
                   borderRight:
-                    pi === 0 ? `1px solid ${COLORS.border}` : "none",
+                    !isMobile && pi === 0 ? `1px solid ${COLORS.border}` : "none",
+                  borderBottom:
+                    isMobile && pi === 0 ? `1px solid ${COLORS.border}` : "none",
                 }}
               >
                 <div style={{ fontSize: 11, color: COLORS.textDim }}>

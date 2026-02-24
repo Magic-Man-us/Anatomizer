@@ -27,9 +27,10 @@ function costColor(normalized: number): string {
 interface CostViewProps {
   data: CostAnalysis | null;
   code: string;
+  isMobile?: boolean;
 }
 
-export function CostView({ data, code }: CostViewProps) {
+export function CostView({ data, code, isMobile = false }: CostViewProps) {
   if (!data?.lines?.length)
     return <Empty icon={<IconZap size={13} />} label="Analyze to see cost heatmap" />;
 
@@ -47,7 +48,7 @@ export function CostView({ data, code }: CostViewProps) {
             key={i}
             style={{
               display: "grid",
-              gridTemplateColumns: "32px 1fr 90px",
+              gridTemplateColumns: isMobile ? "28px 1fr 70px" : "32px 1fr 90px",
               padding: "2px 6px",
               background: costBackground(n),
               borderRadius: 2,

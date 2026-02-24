@@ -14,9 +14,10 @@ function opcodeColor(op: string): string {
 
 interface AsmViewProps {
   data: AssemblyAnalysis | null;
+  isMobile?: boolean;
 }
 
-export function AsmView({ data }: AsmViewProps) {
+export function AsmView({ data, isMobile = false }: AsmViewProps) {
   if (!data?.blocks?.length)
     return <Empty icon={<IconZap size={13} />} label="Analyze to see assembly output" />;
 
@@ -51,7 +52,7 @@ export function AsmView({ data }: AsmViewProps) {
               key={ii}
               style={{
                 display: "grid",
-                gridTemplateColumns: "60px 1fr 1fr",
+                gridTemplateColumns: isMobile ? "40px 1fr" : "60px 1fr 1fr",
                 padding: "2px 4px",
                 color: COLORS.text,
               }}
@@ -60,9 +61,11 @@ export function AsmView({ data }: AsmViewProps) {
               <span style={{ color: opcodeColor(ins.op || "") }}>
                 {ins.op} {ins.operands || ""}
               </span>
-              <span style={{ color: COLORS.textMuted, fontSize: 10 }}>
-                {ins.comment || ""}
-              </span>
+              {!isMobile && (
+                <span style={{ color: COLORS.textMuted, fontSize: 10 }}>
+                  {ins.comment || ""}
+                </span>
+              )}
             </div>
           ))}
         </div>

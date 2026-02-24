@@ -18,9 +18,10 @@ function cycleColor(cycles: number): string {
 
 interface ExecViewProps {
   data: ExecutionAnalysis | null;
+  isMobile?: boolean;
 }
 
-export function ExecView({ data }: ExecViewProps) {
+export function ExecView({ data, isMobile = false }: ExecViewProps) {
   if (!data?.instructions?.length)
     return <Empty icon={<IconZap size={13} />} label="Analyze to see execution flow" />;
 
@@ -39,7 +40,7 @@ export function ExecView({ data }: ExecViewProps) {
             key={i}
             style={{
               display: "grid",
-              gridTemplateColumns: "42px 120px 1fr 60px 100px",
+              gridTemplateColumns: isMobile ? "42px 1fr 60px" : "42px 120px 1fr 60px 100px",
               alignItems: "center",
               padding: "4px 6px",
               borderRadius: 3,
@@ -51,23 +52,39 @@ export function ExecView({ data }: ExecViewProps) {
             <span style={{ color: COLORS.textMuted }}>
               {String(i).padStart(3, "0")}
             </span>
-            <span style={{ color: COLORS.cyan, fontWeight: 600 }}>
-              {inst.op}
-            </span>
-            <span
-              style={{
-                color: COLORS.textDim,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {inst.detail}
-            </span>
+            {isMobile ? (
+              <span
+                style={{
+                  color: COLORS.textDim,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ color: COLORS.cyan, fontWeight: 600 }}>{inst.op}</span>{" "}
+                {inst.detail}
+              </span>
+            ) : (
+              <>
+                <span style={{ color: COLORS.cyan, fontWeight: 600 }}>
+                  {inst.op}
+                </span>
+                <span
+                  style={{
+                    color: COLORS.textDim,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {inst.detail}
+                </span>
+              </>
+            )}
             <span style={{ color: cc, fontWeight: 700, textAlign: "right" }}>
               {inst.cycles}c
             </span>
-            <div
+            {!isMobile && <div
               style={{
                 marginLeft: 6,
                 height: 5,
@@ -84,7 +101,7 @@ export function ExecView({ data }: ExecViewProps) {
                   borderRadius: 3,
                 }}
               />
-            </div>
+            </div>}
           </div>
         );
       })}
