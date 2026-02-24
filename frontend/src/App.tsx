@@ -83,8 +83,12 @@ export default function App() {
     setAnalysis(null);
   };
 
-  const handleToggleSidebar = useCallback(() => {
-    setSidebarOpen((p) => !p);
+  const handleOpenSidebar = useCallback(() => {
+    setSidebarOpen(true);
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    setSidebarOpen(false);
   }, []);
 
   const renderActiveView = () => {
@@ -319,12 +323,13 @@ export default function App() {
           })}
         </div>
 
-        {/* ── Mobile examples sidebar (left edge rail + overlay) ── */}
+        {/* ── Mobile examples sidebar (left edge touch zone + overlay) */}
         <ExampleSidebar
           activeExampleId={activeExampleId}
           onSelect={handleSelectExample}
           open={sidebarOpen}
-          onToggle={handleToggleSidebar}
+          onOpen={handleOpenSidebar}
+          onClose={handleCloseSidebar}
           isMobile
         />
       </div>
@@ -345,15 +350,16 @@ export default function App() {
         overflow: "hidden",
       }}
     >
-      {/* ── Left sidebar — always visible ───────────────────────── */}
+      {/* ── Examples sidebar — collapsible icon rail on the left ── */}
       <ExampleSidebar
         activeExampleId={activeExampleId}
         onSelect={handleSelectExample}
         open={sidebarOpen}
-        onToggle={handleToggleSidebar}
+        onOpen={handleOpenSidebar}
+        onClose={handleCloseSidebar}
       />
 
-      {/* ── Main area (header + content grid) ───────────────────── */}
+      {/* ── Main content area ────────────────────────────────────── */}
       <div
         style={{
           flex: 1,
@@ -363,7 +369,7 @@ export default function App() {
           overflow: "hidden",
         }}
       >
-        {/* ── Header ──────────────────────────────────────────────── */}
+        {/* ── Header ────────────────────────────────────────────── */}
         <div
           style={{
             gridColumn: "1/-1",
@@ -379,9 +385,7 @@ export default function App() {
             <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.accent, display: "flex", alignItems: "center", gap: 4 }}>
               <IconZap size={14} /> Anatomizer
             </span>
-            <span
-              style={{ fontSize: 10, color: COLORS.textMuted, letterSpacing: 1 }}
-            >
+            <span style={{ fontSize: 10, color: COLORS.textMuted, letterSpacing: 1 }}>
               CODE EXECUTION VISUALIZER
             </span>
           </div>
@@ -439,7 +443,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Demo mode banner ────────────────────────────────────── */}
+        {/* ── Demo mode banner ──────────────────────────────────── */}
         {demoMode && (
           <div
             style={{
@@ -488,7 +492,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Editor + Analyze bar ────────────────────────────────── */}
+        {/* ── Editor + Analyze bar ──────────────────────────────── */}
         <div
           style={{
             display: "flex",
@@ -497,7 +501,6 @@ export default function App() {
             overflow: "hidden",
           }}
         >
-          {/* Code editor */}
           <div style={{ flex: 1, overflow: "hidden" }}>
             <CodeEditor
               code={code}
@@ -508,8 +511,6 @@ export default function App() {
               lang={lang}
             />
           </div>
-
-          {/* Analyze action bar */}
           <div
             style={{
               display: "flex",
@@ -547,18 +548,11 @@ export default function App() {
                 <><IconZap size={12} /> Analyze</>
               )}
             </button>
-            <span
-              style={{
-                fontSize: 10,
-                color: COLORS.textMuted,
-              }}
-            >
-              {lang}
-            </span>
+            <span style={{ fontSize: 10, color: COLORS.textMuted }}>{lang}</span>
           </div>
         </div>
 
-        {/* ── Visualization ───────────────────────────────────────── */}
+        {/* ── Visualization ─────────────────────────────────────── */}
         <div
           style={{
             display: "flex",
@@ -575,7 +569,7 @@ export default function App() {
           <div style={{ flex: 1, overflow: "hidden" }}>{renderActiveView()}</div>
         </div>
 
-        {/* ── AI Chat ─────────────────────────────────────────────── */}
+        {/* ── AI Chat ───────────────────────────────────────────── */}
         <div style={{ background: COLORS.panel, overflow: "hidden" }}>
           <AIChatPanel />
         </div>

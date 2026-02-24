@@ -1,91 +1,112 @@
+import { useMemo } from "react";
 import type { CodeExample } from "../examples";
 import { EXAMPLES } from "../examples";
 import { COLORS } from "../theme";
 
-/** Width of the collapsed sidebar rail (px). */
-const RAIL_WIDTH = 38;
+/** Width of the collapsed icon rail (px). */
+const COLLAPSED_WIDTH = 44;
 
 /** Width of the expanded sidebar panel (px). */
-export const SIDEBAR_EXPANDED_WIDTH = 240;
+const EXPANDED_WIDTH = 260;
+
+/** Transition timing for expand/collapse animation. */
+const TRANSITION = "width 0.25s cubic-bezier(0.4,0,0.2,1)";
 
 interface ExampleSidebarProps {
   activeExampleId: string | null;
   onSelect: (example: CodeExample) => void;
   open: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
+  onClose: () => void;
   isMobile?: boolean;
 }
 
 /**
- * Collapsible examples sidebar.
+ * Collapsible examples sidebar with language-icon rail.
  *
- * **Desktop**: Always rendered on the left edge.
- *   - Collapsed: a narrow rail with a vertical "Examples" label + chevron.
- *   - Expanded: full 240px panel with scrollable example list.
+ * **Collapsed**: Thin column showing unique language badges (PY, RS, GO…).
+ * Active example's language is highlighted. Click any badge to expand.
  *
- * **Mobile**: Full-screen overlay with backdrop, triggered by the rail.
+ * **Expanded**: Full panel with scrollable example list. Smooth width transition.
+ * Click the collapse chevron or select an example to browse.
  */
 export function ExampleSidebar({
   activeExampleId,
   onSelect,
   open,
-  onToggle,
+  onOpen,
+  onClose,
   isMobile = false,
 }: ExampleSidebarProps) {
+
+  /** Unique languages in example order, for the collapsed icon rail. */
+  const uniqueLangs = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { lang: string; badge: string }[] = [];
+    for (const ex of EXAMPLES) {
+      if (!seen.has(ex.language)) {
+        seen.add(ex.language);
+        result.push({
+          lang: ex.language,
+          badge: ex.language.slice(0, 2).toUpperCase(),
+        });
+      }
+    }
+    return result;
+  }, []);
+
+  /** Language of the currently active example. */
+  const activeLang = useMemo(() => {
+    const active = EXAMPLES.find((e) => e.id === activeExampleId);
+    return active?.language ?? null;
+  }, [activeExampleId]);
 
   /* ── Mobile: full-screen overlay ──────────────────────────────── */
   if (isMobile) {
     return (
       <>
-        {/* Collapsed rail — always visible at left edge */}
-        <div
-          onClick={onToggle}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            bottom: 0,
-            width: RAIL_WIDTH,
-            background: COLORS.panel,
-            borderRight: `1px solid ${COLORS.border}`,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            zIndex: 900,
-          }}
-        >
-          <span
+        {/* Collapsed rail — always visible */}
+        {!open && (
+          <div
+            onClick={onOpen}
             style={{
-              writingMode: "vertical-rl",
-              textOrientation: "mixed",
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: 1.5,
-              color: COLORS.accent,
-              textTransform: "uppercase",
+              position: "fixed",
+              top: 48,
+              left: 0,
+              bottom: 52,
+              width: COLLAPSED_WIDTH,
+              background: COLORS.panel,
+              borderRight: `1px solid ${COLORS.border}`,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              paddingTop: 8,
+              gap: 4,
+              zIndex: 50,
             }}
           >
-            Examples
-          </span>
-          <IconChevronRight size={12} style={{ marginTop: 6, color: COLORS.accent }} />
-        </div>
+            {uniqueLangs.map(({ lang, badge }) => (
+              <LangBadge
+                key={lang}
+                badge={badge}
+                active={lang === activeLang}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Expanded overlay */}
         {open && (
           <>
-            {/* Backdrop */}
             <div
-              onClick={onToggle}
+              onClick={onClose}
               style={{
                 position: "fixed",
                 inset: 0,
-                background: "rgba(0,0,0,0.5)",
+                background: "rgba(0,0,0,0.45)",
                 zIndex: 997,
               }}
             />
-            {/* Panel */}
             <div
               style={{
                 position: "fixed",
@@ -99,59 +120,15 @@ export function ExampleSidebar({
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
-                boxShadow: "4px 0 24px rgba(0,0,0,0.3)",
+                boxShadow: "4px 0 20px rgba(0,0,0,0.25)",
               }}
             >
-              {/* Header with close */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "14px 14px 10px",
-                  borderBottom: `1px solid ${COLORS.border}`,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: COLORS.accent,
-                    letterSpacing: 0.5,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  <IconFolder size={13} /> Examples ({EXAMPLES.length})
-                </span>
-                <button
-                  onClick={onToggle}
-                  aria-label="Close examples"
-                  style={{
-                    background: "transparent",
-                    border: `1px solid ${COLORS.border}`,
-                    borderRadius: 6,
-                    padding: "6px 12px",
-                    color: COLORS.textDim,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-              {/* List */}
-              <div style={{ flex: 1, overflowY: "auto", padding: 6 }}>
-                {EXAMPLES.map((example) => (
-                  <ExampleItem
-                    key={example.id}
-                    example={example}
-                    isActive={example.id === activeExampleId}
-                    onSelect={() => { onSelect(example); onToggle(); }}
-                    touchTarget
-                  />
-                ))}
-              </div>
+              <SidebarHeader count={EXAMPLES.length} onClose={onClose} />
+              <ExampleList
+                activeExampleId={activeExampleId}
+                onSelect={(ex) => { onSelect(ex); onClose(); }}
+                touchTarget
+              />
             </div>
           </>
         )}
@@ -159,7 +136,7 @@ export function ExampleSidebar({
     );
   }
 
-  /* ── Desktop: inline collapsible sidebar ──────────────────────── */
+  /* ── Desktop: inline collapsible with smooth transition ───────── */
   return (
     <div
       style={{
@@ -169,81 +146,143 @@ export function ExampleSidebar({
         background: COLORS.panel,
         borderRight: `1px solid ${COLORS.border}`,
         overflow: "hidden",
-        width: open ? SIDEBAR_EXPANDED_WIDTH : RAIL_WIDTH,
-        transition: "width 0.2s ease",
+        width: open ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
+        transition: TRANSITION,
         flexShrink: 0,
       }}
     >
-      {/* Toggle handle / header */}
-      <div
-        onClick={onToggle}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: open ? "12px 14px 8px" : "12px 0 8px",
-          justifyContent: open ? "space-between" : "center",
-          borderBottom: `1px solid ${COLORS.border}`,
-          cursor: "pointer",
-          userSelect: "none",
-          transition: "all 0.2s",
-        }}
-      >
-        {open ? (
-          <>
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: COLORS.accent,
-                letterSpacing: 1.2,
-                textTransform: "uppercase",
-              }}
-            >
-              Examples ({EXAMPLES.length})
-            </span>
-            <IconChevronLeft size={12} style={{ color: COLORS.textMuted }} />
-          </>
-        ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <IconFolder size={14} style={{ color: COLORS.accent }} />
-            <span
-              style={{
-                writingMode: "vertical-rl",
-                textOrientation: "mixed",
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: 1.5,
-                color: COLORS.accent,
-                textTransform: "uppercase",
-              }}
-            >
-              Examples
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Example list — only rendered when expanded */}
-      {open && (
-        <div style={{ flex: 1, overflowY: "auto", padding: 6 }}>
-          {EXAMPLES.map((example) => (
-            <ExampleItem
-              key={example.id}
-              example={example}
-              isActive={example.id === activeExampleId}
-              onSelect={() => onSelect(example)}
+      {open ? (
+        /* ── Expanded state ──────────────────────────────────────── */
+        <>
+          <SidebarHeader count={EXAMPLES.length} onClose={onClose} />
+          <ExampleList
+            activeExampleId={activeExampleId}
+            onSelect={onSelect}
+          />
+        </>
+      ) : (
+        /* ── Collapsed icon rail ─────────────────────────────────── */
+        <div
+          onClick={onOpen}
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            paddingTop: 10,
+            gap: 4,
+            cursor: "pointer",
+          }}
+        >
+          {uniqueLangs.map(({ lang, badge }) => (
+            <LangBadge
+              key={lang}
+              badge={badge}
+              active={lang === activeLang}
             />
           ))}
+          {/* Expand hint */}
+          <div style={{ marginTop: 8, color: COLORS.textMuted, opacity: 0.5 }}>
+            <IconChevronRight size={10} />
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Sidebar header with title + close ──────────────────────────── */
+
+function SidebarHeader({ count, onClose }: { count: number; onClose: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "12px 12px 8px",
+        borderBottom: `1px solid ${COLORS.border}`,
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          color: COLORS.accent,
+          letterSpacing: 1.2,
+          textTransform: "uppercase",
+        }}
+      >
+        Examples ({count})
+      </span>
+      <button
+        onClick={onClose}
+        aria-label="Collapse examples"
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 4,
+          cursor: "pointer",
+          color: COLORS.textMuted,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <IconChevronLeft size={14} />
+      </button>
+    </div>
+  );
+}
+
+/* ── Scrollable example list ────────────────────────────────────── */
+
+function ExampleList({
+  activeExampleId,
+  onSelect,
+  touchTarget = false,
+}: {
+  activeExampleId: string | null;
+  onSelect: (example: CodeExample) => void;
+  touchTarget?: boolean;
+}) {
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 6 }}>
+      {EXAMPLES.map((example) => (
+        <ExampleItem
+          key={example.id}
+          example={example}
+          isActive={example.id === activeExampleId}
+          onSelect={() => onSelect(example)}
+          touchTarget={touchTarget}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Language badge (collapsed rail) ────────────────────────────── */
+
+function LangBadge({ badge, active }: { badge: string; active: boolean }) {
+  return (
+    <div
+      style={{
+        width: 30,
+        height: 26,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 5,
+        fontSize: 9,
+        fontWeight: 800,
+        fontFamily: "'SF Mono',Consolas,monospace",
+        color: active ? COLORS.accent : COLORS.textMuted,
+        background: active ? `${COLORS.accent}18` : `${COLORS.textMuted}08`,
+        border: active ? `1px solid ${COLORS.accent}40` : "1px solid transparent",
+        transition: "all 0.2s",
+      }}
+    >
+      {badge}
     </div>
   );
 }
@@ -292,7 +331,6 @@ function ExampleItem({
           : "transparent";
       }}
     >
-      {/* Language badge */}
       <span
         style={{
           fontSize: 9,
@@ -339,48 +377,17 @@ function ExampleItem({
 
 /* ── Inline icons ───────────────────────────────────────────────── */
 
-function IconFolder({ size = 14, style }: { size?: number; style?: React.CSSProperties }) {
+function IconChevronLeft({ size = 14 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      style={{ verticalAlign: "middle", ...style }}
-    >
-      <path
-        d="M2 4.5A1.5 1.5 0 013.5 3H6l1.5 1.5h5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function IconChevronLeft({ size = 14, style }: { size?: number; style?: React.CSSProperties }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      style={{ verticalAlign: "middle", ...style }}
-    >
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ verticalAlign: "middle" }}>
       <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function IconChevronRight({ size = 14, style }: { size?: number; style?: React.CSSProperties }) {
+function IconChevronRight({ size = 14 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      style={{ verticalAlign: "middle", ...style }}
-    >
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ verticalAlign: "middle" }}>
       <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
