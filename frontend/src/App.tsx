@@ -167,7 +167,7 @@ export default function App() {
               {isDark ? <IconSun size={15} /> : <IconMoon size={15} />}
             </button>
             <a
-              href="https://github.com/JoshMLesworthy/Anatomizer"
+              href="https://github.com/Magic-Man-us/Anatomizer"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub repository"
@@ -423,7 +423,7 @@ export default function App() {
               {isDark ? <IconSun size={15} /> : <IconMoon size={15} />}
             </button>
             <a
-              href="https://github.com/JoshMLesworthy/Anatomizer"
+              href="https://github.com/Magic-Man-us/Anatomizer"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub repository"
